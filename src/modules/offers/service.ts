@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma, Unit, JobStatus } from '@prisma/client';
 import { haversineKm } from '../../lib/geo';
 
 const prisma = new PrismaClient();
@@ -26,6 +26,7 @@ export async function list(params: ListOffersParams) {
       return { total: 0, page, pageSize, items: [] };
     }
   }
+  
 
   // Busca ofertas ativas com minimal info do provider e category
   const [total, items] = await Promise.all([
@@ -131,4 +132,138 @@ export async function list(params: ListOffersParams) {
     pageSize,
     items: filtered,
   };
+}
+
+export async function detail(offerId: string) {
+  const o = await prisma.serviceOffer.findUnique({
+    where: { id: offerId },
+    include: {
+      category: true,
+      provider: { include: { user: true } },
+    },
+  });
+  if (!o) throw { status: 404, code: 'OFFER_NOT_FOUND' };
+  return o;
+}
+
+type CreateInput = {
+  title: string;
+  description?: string;
+  priceBase: number;        // em reais (número)
+  unit: Unit;               // 'hora' | 'diaria' | etc. conforme seu enum
+  categoryId?: string;
+  categorySlug?: string;
+  active?: boolean;
+};
+
+export async function create(userId: string, data: CreateInput) {
+  // garante ProviderProfile (upsert mínimo)
+  const provider = await prisma.providerProfile.upsert({
+    where: { userId },
+    update: {},
+    create: { userId, verified: false, radiusKm: 10 },
+  });
+
+  // resolve categoria
+  let categoryId = data.categoryId;
+  if (!categoryId && data.categorySlug) {
+    const cat = await prisma.serviceCategory.findUnique({ where: { slug: data.categorySlug } });
+    if (!cat) throw { status: 400, code: 'CATEGORY_NOT_FOUND' };
+    categoryId = cat.id;
+  }
+  if (!categoryId) throw { status: 400, code: 'CATEGORY_REQUIRED' };
+
+  // cria
+  const created = await prisma.serviceOffer.create({
+    data: {
+      providerId: provider.id,
+      categoryId,
+      title: data.title,
+      description: data.description ?? '',
+      priceBase: new Prisma.Decimal(Number(data.priceBase).toFixed(2)),
+      unit: data.unit,
+      active: data.active ?? true,
+    },
+  });
+  return created;
+}
+
+type UpdateInput = {
+  title?: string;
+  description?: string;
+  priceBase?: number;
+  unit?: Unit;
+  categoryId?: string;
+  categorySlug?: string;
+  active?: boolean;
+};
+
+export async function update(userId: string, offerId: string, data: UpdateInput) {
+  const offer = await prisma.serviceOffer.findUnique({
+    where: { id: offerId },
+    include: { provider: true },
+  });
+  if (!offer) throw { status: 404, code: 'OFFER_NOT_FOUND' };
+
+  const myProvider = await prisma.providerProfile.findUnique({ where: { userId } });
+  if (!myProvider || offer.providerId !== myProvider.id) {
+    throw { status: 403, code: 'FORBIDDEN', message: 'Você não é o dono desta oferta' };
+  }
+
+  // resolve categoria (se enviada)
+  let categoryId = data.categoryId ?? offer.categoryId;
+  if (!data.categoryId && data.categorySlug) {
+    const cat = await prisma.serviceCategory.findUnique({ where: { slug: data.categorySlug } });
+    if (!cat) throw { status: 400, code: 'CATEGORY_NOT_FOUND' };
+    categoryId = cat.id;
+  }
+
+  const updated = await prisma.serviceOffer.update({
+    where: { id: offerId },
+    data: {
+      categoryId,
+      title: data.title ?? offer.title,
+      description: data.description ?? offer.description,
+      priceBase:
+        data.priceBase != null
+          ? new Prisma.Decimal(Number(data.priceBase).toFixed(2))
+          : offer.priceBase,
+      unit: (data.unit as Unit) ?? offer.unit,
+      active: data.active ?? offer.active,
+    },
+  });
+
+  return updated;
+}
+
+export async function remove(userId: string, offerId: string) {
+  const offer = await prisma.serviceOffer.findUnique({
+    where: { id: offerId },
+    include: { provider: true },
+  });
+  if (!offer) throw { status: 404, code: 'OFFER_NOT_FOUND' };
+
+  const myProvider = await prisma.providerProfile.findUnique({ where: { userId } });
+  if (!myProvider || offer.providerId !== myProvider.id) {
+    throw { status: 403, code: 'FORBIDDEN' };
+  }
+
+  // bloqueia se houver job ativo com essa oferta
+  const activeJob = await prisma.job.findFirst({
+    where: {
+      offerId,
+      status: { in: [JobStatus.pending, JobStatus.accepted, JobStatus.in_progress] },
+    },
+    select: { id: true },
+  });
+  if (activeJob) {
+    throw {
+      status: 400,
+      code: 'OFFER_IN_USE',
+      message: 'Existe um job ativo vinculado a esta oferta.',
+    };
+  }
+
+  await prisma.serviceOffer.delete({ where: { id: offerId } });
+  return { deleted: true };
 }
