@@ -1,7 +1,9 @@
+// src/modules/jobs/service.ts
 import { Prisma, JobStatus, PaymentStatus } from '@prisma/client';
 import { prisma } from '../../db/client';
 import { estimatePrice } from '../../lib/pricing';
 
+/** Criação de Job (cliente) */
 export async function createJob(params: {
   customerId: string;
   offerId: string;
@@ -9,7 +11,7 @@ export async function createJob(params: {
   datetime: Date;
   notes?: string;
 }) {
-  // Carrega oferta + provider + address do provider (default) para calcular distância
+  // Carrega oferta + provider + category
   const offer = await prisma.serviceOffer.findUnique({
     where: { id: params.offerId },
     include: {
@@ -33,10 +35,15 @@ export async function createJob(params: {
   });
 
   let distanceKm: number | null = null;
-  if (providerDefaultAddr?.lat != null && providerDefaultAddr?.lng != null && address.lat != null && address.lng != null) {
+  if (
+    providerDefaultAddr?.lat != null &&
+    providerDefaultAddr?.lng != null &&
+    address.lat != null &&
+    address.lng != null
+  ) {
     distanceKm = haversineKm(
       { lat: Number(providerDefaultAddr.lat), lng: Number(providerDefaultAddr.lng) },
-      { lat: Number(address.lat),           lng: Number(address.lng) }
+      { lat: Number(address.lat), lng: Number(address.lng) },
     );
   }
 
@@ -50,7 +57,7 @@ export async function createJob(params: {
       offerId: offer.id,
       datetime: params.datetime,
       status: JobStatus.pending,
-      paymentStatus: PaymentStatus.hold,
+      paymentStatus: PaymentStatus.hold, // MOCK: começa em hold
       priceEstimated,
       notes: params.notes,
     },
@@ -63,10 +70,16 @@ export async function createJob(params: {
   return { job, distanceKm };
 }
 
+/** Listagem de Jobs com filtros (papel, statuses[], datas, categoria, ordenação, paginação) */
 export async function listJobs(params: {
   userId: string;
   role: 'customer' | 'provider';
-  status?: JobStatus;
+  statuses?: JobStatus[]; // múltiplos
+  dateFrom?: Date;
+  dateTo?: Date;
+  categoryId?: string;
+  categorySlug?: string;
+  order?: 'asc' | 'desc'; // por datetime
   page?: number;
   pageSize?: number;
 }) {
@@ -74,9 +87,35 @@ export async function listJobs(params: {
   const take = Math.min(50, Math.max(1, params.pageSize ?? 10));
   const skip = (page - 1) * take;
 
+  // normaliza statuses: remove duplicados e valores inválidos
+  let statuses: JobStatus[] | undefined = undefined;
+  if (params.statuses && params.statuses.length) {
+    const allowed = new Set(Object.values(JobStatus));
+    statuses = Array.from(
+      new Set(
+        params.statuses.filter((s): s is JobStatus => allowed.has(s as JobStatus)),
+      ),
+    );
+    if (statuses.length === 0) statuses = undefined;
+  }
+
+  // resolve categoria por slug (se necessário)
+  let categoryId = params.categoryId;
+  if (!categoryId && params.categorySlug) {
+    const cat = await prisma.serviceCategory.findUnique({ where: { slug: params.categorySlug } });
+    categoryId = cat?.id;
+  }
+
+  // constrói filtro de datas só com chaves presentes
+  const dt: Prisma.DateTimeFilter = {};
+  if (params.dateFrom) dt.gte = params.dateFrom;
+  if (params.dateTo) dt.lte = params.dateTo;
+
   const where: Prisma.JobWhereInput = {
     ...(params.role === 'customer' ? { customerId: params.userId } : { providerId: params.userId }),
-    ...(params.status ? { status: params.status } : {}),
+    ...(statuses ? { status: { in: statuses } } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(params.dateFrom || params.dateTo ? { datetime: dt } : {}),
   };
 
   const [total, items] = await Promise.all([
@@ -85,7 +124,7 @@ export async function listJobs(params: {
       where,
       skip,
       take,
-      orderBy: { datetime: 'desc' },
+      orderBy: { datetime: params.order === 'asc' ? 'asc' : 'desc' },
       include: {
         category: true,
         offer: true,
@@ -99,6 +138,7 @@ export async function listJobs(params: {
   return { total, page, pageSize: take, items };
 }
 
+/** Aceitar (prestador) */
 export async function acceptJob(params: { jobId: string; providerId: string }) {
   const job = await prisma.job.findUnique({ where: { id: params.jobId } });
   if (!job) throw { status: 404, code: 'JOB_NOT_FOUND' };
@@ -124,6 +164,7 @@ export async function acceptJob(params: { jobId: string; providerId: string }) {
   return updated;
 }
 
+/** Iniciar (prestador) */
 export async function startJob(params: { jobId: string; providerId: string }) {
   const job = await prisma.job.findUnique({ where: { id: params.jobId } });
   if (!job) throw { status: 404, code: 'JOB_NOT_FOUND' };
@@ -136,20 +177,30 @@ export async function startJob(params: { jobId: string; providerId: string }) {
   });
 }
 
+/** Finalizar (prestador) — MOCK: captura pagamento e define preço final = estimado */
 export async function finishJob(params: { jobId: string; providerId: string }) {
   const job = await prisma.job.findUnique({ where: { id: params.jobId } });
   if (!job) throw { status: 404, code: 'JOB_NOT_FOUND' };
   if (job.providerId !== params.providerId) throw { status: 403, code: 'FORBIDDEN' };
   if (job.status !== JobStatus.in_progress) throw { status: 400, code: 'INVALID_STATE' };
 
-  // MVP: preço final = estimado (pode ajustar depois)
   return prisma.job.update({
     where: { id: params.jobId },
-    data: { status: JobStatus.done, priceFinal: job.priceEstimated, paymentStatus: PaymentStatus.captured },
+    data: {
+      status: JobStatus.done,
+      priceFinal: job.priceEstimated,
+      paymentStatus: PaymentStatus.captured, // MOCK: captura direto
+    },
   });
 }
 
-export async function cancelJob(params: { jobId: string; userId: string; role: 'customer' | 'provider'; reason?: string }) {
+/** Cancelar (cliente ou prestador) — MOCK: marca como refunded */
+export async function cancelJob(params: {
+  jobId: string;
+  userId: string;
+  role: 'customer' | 'provider';
+  reason?: string;
+}) {
   const job = await prisma.job.findUnique({ where: { id: params.jobId } });
   if (!job) throw { status: 404, code: 'JOB_NOT_FOUND' };
 
@@ -160,15 +211,23 @@ export async function cancelJob(params: { jobId: string; userId: string; role: '
     throw { status: 403, code: 'FORBIDDEN' };
   }
 
-  // Regras simples de estado
-  if (![JobStatus.pending, JobStatus.accepted, JobStatus.in_progress].includes(job.status)) {
-    throw { status: 400, code: 'INVALID_STATE', message: 'Não é possível cancelar neste estado' };
-  }
+  const cancelableStatuses: JobStatus[] = [
+  JobStatus.pending,
+  JobStatus.accepted,
+  JobStatus.in_progress,
+];
 
-  // MVP: só marca como canceled (sem refund real ainda)
+if (!cancelableStatuses.includes(job.status)) {
+  throw { status: 400, code: 'INVALID_STATE', message: 'Não é possível cancelar neste estado' };
+}
+
   return prisma.job.update({
     where: { id: params.jobId },
-    data: { status: JobStatus.canceled, notes: job.notes ? `${job.notes}\n[cancel] ${params.reason ?? ''}` : `[cancel] ${params.reason ?? ''}` },
+    data: {
+      status: JobStatus.canceled,
+      paymentStatus: PaymentStatus.refunded, // MOCK: refund direto
+      notes: job.notes ? `${job.notes}\n[cancel] ${params.reason ?? ''}` : `[cancel] ${params.reason ?? ''}`,
+    },
   });
 }
 
@@ -180,6 +239,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   const dLng = toRad(b.lng - a.lng);
   const lat1 = toRad(a.lat);
   const lat2 = toRad(b.lat);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }

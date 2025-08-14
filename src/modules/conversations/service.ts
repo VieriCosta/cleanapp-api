@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/client';
+import { emitToConversation } from '../../realtime/socket';
 
 export type ListParams = { userId: string; page?: number; pageSize?: number };
 
@@ -96,17 +97,39 @@ export async function sendMessage(userId: string, conversationId: string, conten
   if (!content.trim()) throw { status: 400, code: 'CONTENT_REQUIRED' };
 
   const msg = await prisma.message.create({
-    data: { conversationId, senderId: userId, content, read: false },
-  });
+  data: { conversationId, senderId: userId, content, read: false },
+});
 
-  return msg;
+// notifica a sala (menos o autor; o cliente pode filtrar localmente)
+emitToConversation(conversationId, 'message:new', {
+  id: msg.id,
+  conversationId: msg.conversationId,
+  senderId: msg.senderId,
+  content: msg.content,
+  createdAt: msg.createdAt,
+});
+return msg;
 }
 
 export async function markAllRead(userId: string, conversationId: string) {
+  // garante que o usuário participa da conversa
   await ensureAccess(userId, conversationId);
+
+  // marca mensagens recebidas (do outro usuário) como lidas
   const res = await prisma.message.updateMany({
     where: { conversationId, senderId: { not: userId }, read: false },
     data: { read: true },
   });
+
+  // notifica os sockets conectados na sala da conversa
+  if (res.count > 0) {
+    emitToConversation(conversationId, 'message:read_all', {
+      conversationId,
+      byUserId: userId,
+      updated: res.count,
+      at: new Date().toISOString(),
+    });
+  }
+
   return { updated: res.count };
 }

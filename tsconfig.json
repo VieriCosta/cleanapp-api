@@ -4,17 +4,26 @@
     "module": "CommonJS",
     "lib": ["ES2020"],
     "moduleResolution": "Node",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
 
+    "outDir": "dist",
+    "rootDir": ".",
+
+    "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "baseUrl": "src"
+
+    "baseUrl": "src",
+    "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

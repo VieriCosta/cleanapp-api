@@ -1,72 +1,210 @@
-🧹 CleanApp API
+# CleanApp API (MVP)
 
-API do CleanApp, uma plataforma de serviços sob demanda estilo “iFood de serviços”, onde clientes podem contratar prestadores para tarefas como limpeza, jardinagem, aulas e muito mais.
+Plataforma de serviços sob demanda (tipo “iFood de serviços”) — **API** em Node.js + Express + Prisma + MySQL.  
+Este repositório contém o backend do MVP, com autenticação JWT, catálogo (categorias e ofertas), endereços, jobs (criar/aceitar/iniciar/finalizar/cancelar), conversas e testes de integração.
 
-🚀 Tecnologias utilizadas
+> **Docs da API:** abra `http://localhost:3000/api/docs` (Swagger UI)
 
-Node.js + Express — Backend
-TypeScript — Tipagem estática
-Prisma ORM — Conexão com banco de dados
-MySQL — Banco de dados relacional
-JWT — Autenticação
-Bcrypt — Criptografia de senhas
-Socket.IO — Comunicação em tempo real
-Pino — Logs
+---
 
-📂 Estrutura do projeto
-src/
- ├── routes/        # Rotas da aplicação
- ├── controllers/   # Controladores (lógica das rotas)
- ├── services/      # Serviços (regras de negócio)
- ├── lib/           # Configurações auxiliares
- ├── index.ts       # Ponto de entrada da API
-prisma/
- ├── schema.prisma  # Definição das tabelas e modelos
- ├── seed.ts        # População inicial do banco
+## Stack
 
-⚙️ Pré-requisitos
+- **Runtime:** Node.js 22
+- **Framework:** Express 5
+- **ORM:** Prisma (MySQL)
+- **Auth:** JWT (access/refresh)
+- **Logs:** pino
+- **Realtime:** Socket.IO
+- **Validação:** zod
+- **Tests:** Jest + Supertest + ts-jest
+- **Tipos/Build:** TypeScript + tsx
 
-Node.js 20+
-MySQL instalado e configurado
-NPM ou Yarn para instalar dependências
+---
 
-📦 Instalação
-# Clonar o repositório
-git clone https://github.com/VieriCosta/cleanapp-api.git
+## Getting Started
 
-# Entrar na pasta
-cd cleanapp-api
+### Requisitos
+- Node.js 18+ (recomendado 22)
+- MySQL rodando localmente (crie um DB p/ o projeto)
 
-# Instalar dependências
+### Configuração
+
+1. Copie o `.env.example` para `.env` e ajuste:
+   ```env
+   # App
+   NODE_ENV=development
+   PORT=3000
+   LOG_LEVEL=info
+
+   # DB
+   DATABASE_URL="mysql://cleanapp:cleanapp@localhost:3306/cleanapp"
+
+   # JWT
+   JWT_ACCESS_SECRET=... # 64 hex
+   JWT_REFRESH_SECRET=... # 64 hex
+   JWT_ACCESS_EXPIRES=15m
+   JWT_REFRESH_EXPIRES=7d
+2. Instale as dependências:
+
+bash
+Copiar
+Editar
 npm install
+3. Migrações e client do Prisma:
 
-🔧 Configuração
+bash
+Copiar
+Editar
+npx prisma migrate dev --name init
+npx prisma generate
 
-Duplique o arquivo .env.example e renomeie para .env.
+4. Seed de dados (usuários, perfis, categorias, ofertas, endereços):
 
-Preencha as variáveis de ambiente com suas configurações de banco e JWT.
-
-Exemplo:
-
-DATABASE_URL="mysql://user:password@localhost:3306/cleanapp"
-JWT_SECRET="sua_chave_secreta"
-PORT=3000
-
-🗄️ Banco de dados
-
-Rodar as migrações:
-npx prisma migrate dev
-
-Popular o banco com dados iniciais:
+bash
+Copiar
+Editar
 npm run db:seed
-▶️ Rodando o projeto
+
+5. Subir a API:
+
+bash
+Copiar
+Editar
 npm run dev
-A API ficará disponível em:
-http://localhost:3000
-📌 Rotas iniciais
+Logs esperados:
 
-GET /api/health/live → Testar se a API está rodando
-POST /api/auth/register → Registrar um novo usuário
-POST /api/auth/login → Fazer login e receber token JWT
+yaml
+Copiar
+Editar
+INFO: Socket.IO initialized
+INFO: HTTP server started port: 3000
 
-📄 Licença: Este projeto está sob licença MIT.
+6. Abra a documentação:
+
+http://localhost:3000/api/docs
+
+Scripts úteis
+json
+Copiar
+Editar
+{
+  "dev": "tsx watch src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js",
+  "db:seed": "tsx prisma/seed.ts",
+  "test": "jest",
+  "test:watch": "jest --watch",
+  "test:integration": "jest tests/integration --runInBand"
+}
+Endpoints principais (MVP)
+Auth
+
+POST /api/auth/register — registrar (name, email, password, role)
+
+POST /api/auth/login — login → accessToken, refreshToken
+
+POST /api/auth/refresh — renovar accessToken
+
+Categorias e Ofertas
+
+GET /api/categories — lista categorias
+
+GET /api/offers — lista ofertas (filtros por categoria)
+
+POST /api/offers — (prestador) cria oferta
+
+Endereços do usuário
+
+GET /api/me/addresses — meus endereços
+
+POST /api/me/addresses — cria
+
+POST /api/me/addresses/:id/default — define como padrão
+
+DELETE /api/me/addresses/:id — remove (valida se não está em job ativo)
+
+Jobs
+
+POST /api/jobs — (cliente) cria job
+body: { offerId, addressId, datetime, notes? }
+→ cria Job com status=pending, paymentStatus=hold (mock)
+
+GET /api/jobs?role=customer|provider&status=... — lista com filtros (datas, categoria, ordenação, paginação)
+
+POST /api/jobs/:id/accept — (prestador) aceita (accepted)
+
+POST /api/jobs/:id/start — (prestador) inicia (in_progress)
+
+POST /api/jobs/:id/finish — (prestador) finaliza (done + paymentStatus=captured)
+
+POST /api/jobs/:id/cancel — (cliente ou prestador) cancela (canceled + paymentStatus=refunded)
+
+Conversas & Mensagens
+
+GET /api/conversations — minhas conversas (por job)
+
+GET /api/conversations/:id/messages — mensagens
+
+POST /api/conversations/:id/messages — envia mensagem
+
+POST /api/conversations/:id/read-all — marca todas como lidas
+
+Saúde
+
+GET /api/health/live / ready
+
+Veja payloads e schemas detalhados no Swagger.
+
+Testes
+Testes de integração (usam o app em memória via Supertest):
+
+bash
+Copiar
+Editar
+npm run test:integration
+O teste principal simula o fluxo de pagamento mock via transições:
+
+cliente cria job → paymentStatus=hold
+
+prestador aceita e inicia → accepted → in_progress
+
+prestador finaliza → done + paymentStatus=captured
+
+cria outro job e cancela → canceled + paymentStatus=refunded
+
+Por padrão, os testes usam o mesmo DB da .env. Se quiser um banco de testes, configure NODE_ENV=test e DATABASE_URL separados e adapte o Jest.
+
+Estrutura do projeto
+pgsql
+Copiar
+Editar
+src/
+  app.ts
+  index.ts
+  routes/
+    index.ts
+  middlewares/
+  lib/
+  db/
+    client.ts
+  docs/
+    openapi.ts
+  realtime/
+    socket.ts
+  modules/
+    auth/
+      routes.ts controller.ts service.ts tokens.ts
+    users/
+    categories/
+    offers/
+    addresses/
+    jobs/
+      routes.ts controller.ts service.ts
+    conversations/
+      routes.ts controller.ts service.ts
+tests/
+  integration/
+    jobs.payment-mock.spec.ts
+prisma/
+  schema.prisma
+  seed.ts
