@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  customer
+  provider
+}
+
+enum JobStatus {
+  pending
+  accepted
+  in_progress
+  done
+  canceled
+}
+
+enum PaymentStatus {
+  hold
+  captured
+  refunded
+  failed
+}
+
+enum Unit {
+  hora
+  diaria
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(customer)
+  phone     String?
+  photoUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações
+  addresses       Address[]
+  providerProfile ProviderProfile?
+  messages        Message[]
+  reviewsWritten  Review[]         @relation("reviewsWritten")
+  reviewsReceived Review[]         @relation("reviewsReceived")
+  jobsAsCustomer  Job[]            @relation("jobsAsCustomer")
+  jobsAsProvider  Job[]            @relation("jobsAsProvider")
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+}
+
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String?
+  street    String
+  number    String?
+  district  String?
+  city      String
+  state     String
+  zip       String
+  lat       Decimal? @db.Decimal(10, 7)
+  lng       Decimal? @db.Decimal(10, 7)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // ⬇️ back-relation que faltava
+  jobs Job[]
+
+  @@index([userId])
+  @@index([lat, lng])
+}
+
+model ProviderProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio          String?
+  radiusKm     Int      @default(5)
+  verified     Boolean  @default(false)
+  scoreAvg     Float    @default(0)
+  totalReviews Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  offers ServiceOffer[]
+}
+
+model ServiceCategory {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers ServiceOffer[]
+  jobs   Job[]
+}
+
+model ServiceOffer {
+  id          String          @id @default(uuid())
+  providerId  String
+  provider    ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    ServiceCategory @relation(fields: [categoryId], references: [id])
+  title       String
+  description String
+  priceBase   Decimal         @db.Decimal(10, 2)
+  unit        Unit
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  jobs Job[]
+
+  @@index([providerId])
+  @@index([categoryId, active])
+}
+
+model Job {
+  id             String          @id @default(uuid())
+  customerId     String
+  customer       User            @relation("jobsAsCustomer", fields: [customerId], references: [id])
+  providerId     String?
+  provider       User?           @relation("jobsAsProvider", fields: [providerId], references: [id])
+  addressId      String
+  address        Address         @relation(fields: [addressId], references: [id])
+  categoryId     String
+  category       ServiceCategory @relation(fields: [categoryId], references: [id])
+  offerId        String?
+  offer          ServiceOffer?   @relation(fields: [offerId], references: [id])
+  datetime       DateTime
+  status         JobStatus       @default(pending)
+  priceEstimated Decimal         @db.Decimal(10, 2)
+  priceFinal     Decimal?        @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus   @default(hold)
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  conversation Conversation?
+  payments     Payment[]
+  reviews      Review[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([providerId])
+  @@index([categoryId])
+  @@index([datetime])
+}
+
+model Conversation {
+  id       String    @id @default(uuid())
+  jobId    String    @unique
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Payment {
+  id         String   @id @default(uuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  gateway    String
+  intentId   String?
+  chargeId   String?
+  status     String?
+  amount     Decimal  @db.Decimal(10, 2)
+  fees       Decimal? @db.Decimal(10, 2)
+  receiptUrl String?
+  createdAt  DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  jobId     String   @unique
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  raterId   String
+  rater     User     @relation("reviewsWritten", fields: [raterId], references: [id])
+  rateeId   String
+  ratee     User     @relation("reviewsReceived", fields: [rateeId], references: [id])
+  rating    Int      @default(5)
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([rateeId])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String
+  payloadJson String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  entity    String
+  entityId  String
+  action    String
+  diffJson  String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
