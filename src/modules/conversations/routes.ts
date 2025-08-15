@@ -1,13 +1,24 @@
+// src/modules/conversations/routes.ts
 import { Router } from 'express';
 import { authRequired } from '../../middlewares/auth';
-import { detailCtrl, listCtrl, listMessagesCtrl, markReadCtrl, sendMessageCtrl } from './controller';
+import {
+  listCtrl,
+  detailCtrl,
+  listMessagesCtrl,
+  sendMessageCtrl,
+  markAllReadCtrl,
+} from './controller';
 
 const router = Router();
 
-router.get('/', authRequired, listCtrl);
-router.get('/:id', authRequired, detailCtrl);
-router.get('/:id/messages', authRequired, listMessagesCtrl);
-router.post('/:id/messages', authRequired, sendMessageCtrl);
-router.post('/:id/read', authRequired, markReadCtrl);
+// todas as rotas exigem auth
+router.use(authRequired);
+
+// NUNCA chame os controllers (não use parênteses)
+router.get('/', listCtrl);
+router.get('/:id', detailCtrl);
+router.get('/:id/messages', listMessagesCtrl);
+router.post('/:id/messages', sendMessageCtrl);
+router.post('/:id/read-all', markAllReadCtrl);
 
 export default router;
