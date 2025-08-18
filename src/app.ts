@@ -7,6 +7,7 @@ import { openapiSpec } from './docs/openapi';
 import { correlationId } from './middlewares/correlation-id';
 import { logger } from './lib/logger';
 import { errorHandler } from './middlewares/erro-handler';
+import path from 'path';
 
 export function buildApp() {
   const app = express();
@@ -15,6 +16,7 @@ export function buildApp() {
   app.use(helmet());
   app.use(cors({ origin: (origin, cb) => cb(null, true), credentials: true }));
   app.use(express.json({ limit: '1mb' }));
+  app.use('/uploads', express.static(path.resolve('uploads')));
   app.use(correlationId);
 
   // swagger

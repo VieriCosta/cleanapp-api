@@ -1,6 +1,5 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/client';
-import { emitToConversation } from '../../realtime/socket';
 
 export type ListParams = { userId: string; page?: number; pageSize?: number };
 
@@ -18,7 +17,7 @@ export async function listConversations({ userId, page = 1, pageSize = 10 }: Lis
       where,
       skip,
       take,
-      orderBy: { id: 'desc' }, // simples; poderíamos ordenar por lastMessage.createdAt com subquery
+      orderBy: { id: 'desc' },
       include: {
         job: {
           include: {
@@ -33,7 +32,7 @@ export async function listConversations({ userId, page = 1, pageSize = 10 }: Lis
     }),
   ]);
 
-  // unreadCount por conversa (mensagens enviadas por "outro")
+  // unreadCount por conversa (mensagens enviadas pelo outro participante)
   const withUnread = await Promise.all(
     rows.map(async (c) => {
       const unreadCount = await prisma.message.count({
@@ -60,10 +59,15 @@ export async function ensureAccess(userId: string, conversationId: string) {
       },
     },
   });
+
   if (!conv) throw { status: 404, code: 'CONVERSATION_NOT_FOUND' };
+
   const isParticipant =
-    conv.job.customerId === userId || (conv.job.providerId != null && conv.job.providerId === userId);
+    conv.job.customerId === userId ||
+    (conv.job.providerId != null && conv.job.providerId === userId);
+
   if (!isParticipant) throw { status: 403, code: 'FORBIDDEN' };
+
   return conv;
 }
 
@@ -92,23 +96,21 @@ export async function listMessages(userId: string, conversationId: string, page 
   return { total, page, pageSize: take, items };
 }
 
-export async function sendMessage(userId: string, conversationId: string, content: string) {
+export async function sendMessage(userId: string, conversationId: string, text: string) {
+  // garante acesso (lança erro se não tiver)
   await ensureAccess(userId, conversationId);
-  if (!content.trim()) throw { status: 400, code: 'CONTENT_REQUIRED' };
 
-  const msg = await prisma.message.create({
-  data: { conversationId, senderId: userId, content, read: false },
-});
+  const saved = await prisma.message.create({
+    data: {
+      conversationId,
+      senderId: userId,
+      content: text,
+      read: false,
+    },
+  });
 
-// notifica a sala (menos o autor; o cliente pode filtrar localmente)
-emitToConversation(conversationId, 'message:new', {
-  id: msg.id,
-  conversationId: msg.conversationId,
-  senderId: msg.senderId,
-  content: msg.content,
-  createdAt: msg.createdAt,
-});
-return msg;
+  // Emissão em tempo real deve ser feita no controller (se desejado)
+  return saved;
 }
 
 export async function markAllRead(userId: string, conversationId: string) {
@@ -121,15 +123,6 @@ export async function markAllRead(userId: string, conversationId: string) {
     data: { read: true },
   });
 
-  // notifica os sockets conectados na sala da conversa
-  if (res.count > 0) {
-    emitToConversation(conversationId, 'message:read_all', {
-      conversationId,
-      byUserId: userId,
-      updated: res.count,
-      at: new Date().toISOString(),
-    });
-  }
-
+  // Emissão em tempo real (ex.: atualizar unreadCount) pode ser feita no controller
   return { updated: res.count };
 }

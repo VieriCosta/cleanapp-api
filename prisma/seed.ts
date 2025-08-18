@@ -1,3 +1,4 @@
+// prisma/seed.ts
 import { Prisma, PrismaClient, Role, Unit, JobStatus, PaymentStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -5,7 +6,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   const hash = (plain: string) => bcrypt.hashSync(plain, 10);
-  const money = (val: string) => new Prisma.Decimal(val);
+  const money = (val: string | number) => new Prisma.Decimal(val);
 
   // --- Users ---
   const admin = await prisma.user.upsert({
@@ -68,7 +69,7 @@ async function main() {
     },
   });
 
-  // --- Addresses (dos clientes) ---
+  // --- Addresses (Clientes) ---
   const addrCustomer1 = await prisma.address.upsert({
     where: { id: 'addr-c1' }, // chave estável só pra evitar duplicar em reruns
     update: {},
@@ -130,45 +131,46 @@ async function main() {
     },
   });
 
+  // Endereços base dos prestadores (para distância)
   await prisma.address.upsert({
-  where: { id: 'addr-p1' },
-  update: {},
-  create: {
-    id: 'addr-p1',
-    userId: providerUser1.id,
-    label: 'Base Operacional',
-    street: 'Rua do Prestador 1',
-    number: '10',
-    district: 'Centro',
-    city: 'Pocinhos',
-    state: 'PB',
-    zip: '58150000',
-    lat: new Prisma.Decimal('-7.0700000'),
-    lng: new Prisma.Decimal('-36.0600000'),
-    isDefault: true,
-  },
-});
+    where: { id: 'addr-p1' },
+    update: {},
+    create: {
+      id: 'addr-p1',
+      userId: providerUser1.id,
+      label: 'Base Operacional',
+      street: 'Rua do Prestador 1',
+      number: '10',
+      district: 'Centro',
+      city: 'Pocinhos',
+      state: 'PB',
+      zip: '58150000',
+      lat: new Prisma.Decimal('-7.0700000'),
+      lng: new Prisma.Decimal('-36.0600000'),
+      isDefault: true,
+    },
+  });
 
-await prisma.address.upsert({
-  where: { id: 'addr-p2' },
-  update: {},
-  create: {
-    id: 'addr-p2',
-    userId: providerUser2.id,
-    label: 'Base Operacional',
-    street: 'Rua do Prestador 2',
-    number: '20',
-    district: 'Centro',
-    city: 'Campina Grande',
-    state: 'PB',
-    zip: '58400000',
-    lat: new Prisma.Decimal('-7.2305000'),
-    lng: new Prisma.Decimal('-35.8795000'),
-    isDefault: true,
-  },
-});
+  await prisma.address.upsert({
+    where: { id: 'addr-p2' },
+    update: {},
+    create: {
+      id: 'addr-p2',
+      userId: providerUser2.id,
+      label: 'Base Operacional',
+      street: 'Rua do Prestador 2',
+      number: '20',
+      district: 'Centro',
+      city: 'Campina Grande',
+      state: 'PB',
+      zip: '58400000',
+      lat: new Prisma.Decimal('-7.2305000'),
+      lng: new Prisma.Decimal('-35.8795000'),
+      isDefault: true,
+    },
+  });
 
-  // --- Categories ---
+  // --- Categories (originais) ---
   const catLimpeza = await prisma.serviceCategory.upsert({
     where: { slug: 'limpeza' },
     update: {},
@@ -187,7 +189,27 @@ await prisma.address.upsert({
     create: { name: 'Aulas', slug: 'aulas' },
   });
 
-  // --- Offers ---
+  // --- Categories extras para a Home ---
+  const catsExtra = [
+    { slug: 'residencial', name: 'Limpeza Residencial' },
+    { slug: 'comercial',   name: 'Limpeza Comercial'   },
+    { slug: 'veiculos',    name: 'Limpeza de Veículos' },
+    { slug: 'lavanderia',  name: 'Lavanderia'          },
+    { slug: 'pesada',      name: 'Limpeza Pesada'      },
+    { slug: 'urgente',     name: 'Urgente'             },
+  ];
+
+  const catMap: Record<string, { id: string }> = {};
+  for (const c of catsExtra) {
+    const saved = await prisma.serviceCategory.upsert({
+      where: { slug: c.slug },
+      update: {},
+      create: c,
+    });
+    catMap[c.slug] = { id: saved.id };
+  }
+
+  // --- Offers (originais) ---
   const offerLimpeza1 = await prisma.serviceOffer.upsert({
     where: { id: 'offer-limpeza-1' },
     update: {},
@@ -229,6 +251,97 @@ await prisma.address.upsert({
       description: 'Poda de arbustos, gramado e limpeza do jardim.',
       priceBase: money('200.00'),
       unit: Unit.diaria,
+      active: true,
+    },
+  });
+
+  // --- Offers extras (para cards da Home) ---
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-residencial-p1' },
+    update: {},
+    create: {
+      id: 'offer-residencial-p1',
+      providerId: prov1.id,
+      categoryId: catMap['residencial'].id,
+      title: 'Limpeza Residencial',
+      description: 'Casa, apê e quintal. Materiais do cliente.',
+      priceBase: money('45.00'),
+      unit: Unit.hora,
+      active: true,
+    },
+  });
+
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-comercial-p1' },
+    update: {},
+    create: {
+      id: 'offer-comercial-p1',
+      providerId: prov1.id,
+      categoryId: catMap['comercial'].id,
+      title: 'Limpeza Comercial',
+      description: 'Escritórios e lojas. Equipe treinada.',
+      priceBase: money('55.00'),
+      unit: Unit.hora,
+      active: true,
+    },
+  });
+
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-lavanderia-p1' },
+    update: {},
+    create: {
+      id: 'offer-lavanderia-p1',
+      providerId: prov1.id,
+      categoryId: catMap['lavanderia'].id,
+      title: 'Lavanderia',
+      description: 'Roupas, tecidos e uniformes.',
+      priceBase: money('35.00'),
+      unit: Unit.hora,
+      active: true,
+    },
+  });
+
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-pesada-p2' },
+    update: {},
+    create: {
+      id: 'offer-pesada-p2',
+      providerId: prov2.id,
+      categoryId: catMap['pesada'].id,
+      title: 'Limpeza Pesada',
+      description: 'Pós-obra, reforma e mudança.',
+      priceBase: money('65.00'),
+      unit: Unit.hora,
+      active: true,
+    },
+  });
+
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-veiculos-p2' },
+    update: {},
+    create: {
+      id: 'offer-veiculos-p2',
+      providerId: prov2.id,
+      categoryId: catMap['veiculos'].id,
+      title: 'Limpeza de Veículos',
+      description: 'Carros, motos e caminhões.',
+      priceBase: money('40.00'),
+      unit: Unit.hora,
+      active: true,
+    },
+  });
+
+  await prisma.serviceOffer.upsert({
+    where: { id: 'offer-urgente-p2' },
+    update: {},
+    create: {
+      id: 'offer-urgente-p2',
+      providerId: prov2.id,
+      categoryId: catMap['urgente'].id,
+      title: 'Atendimento Urgente',
+      description: 'Chegamos em até 2h (área coberta).',
+      priceBase: money('80.00'),
+      unit: Unit.hora,
       active: true,
     },
   });

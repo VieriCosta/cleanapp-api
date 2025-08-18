@@ -1,4 +1,3 @@
-// src/modules/conversations/routes.ts
 import { Router } from 'express';
 import { authRequired } from '../../middlewares/auth';
 import {
@@ -11,14 +10,19 @@ import {
 
 const router = Router();
 
-// todas as rotas exigem auth
-router.use(authRequired);
+// Lista conversas do usuário autenticado
+router.get('/', authRequired, listCtrl);
 
-// NUNCA chame os controllers (não use parênteses)
-router.get('/', listCtrl);
-router.get('/:id', detailCtrl);
-router.get('/:id/messages', listMessagesCtrl);
-router.post('/:id/messages', sendMessageCtrl);
-router.post('/:id/read-all', markAllReadCtrl);
+// Detalhe de uma conversa
+router.get('/:id', authRequired, detailCtrl);
+
+// Mensagens da conversa
+router.get('/:id/messages', authRequired, listMessagesCtrl);
+
+// Enviar mensagem
+router.post('/:id/messages', authRequired, sendMessageCtrl);
+
+// Marcar todas como lidas
+router.post('/:id/messages/mark-all-read', authRequired, markAllReadCtrl);
 
 export default router;
