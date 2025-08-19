@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { authRequired } from '../../middlewares/auth';
-import { getMeCtrl } from './controller';
-import { listForUserCtrl } from '../reviews/controller';
+import * as Ctrl from './controller';
 
 const router = Router();
 
-router.get('/me', authRequired, getMeCtrl);
-router.get('/:id/reviews', listForUserCtrl);
+router.get('/me', authRequired, Ctrl.meCtrl);
+router.patch('/me', authRequired, Ctrl.updateMeCtrl);
+router.post('/me/change-password', authRequired, Ctrl.changePasswordCtrl);
 
 export default router;

@@ -7,6 +7,7 @@ import addressesRoutes from '../modules/addresses/routes';
 import jobsRoutes from '../modules/jobs/routes';
 import conversationsRoutes from '../modules/conversations/routes';
 import userPhotoRoutes from '../modules/users/photo.routes'; //
+import { authRequired } from '../middlewares/auth';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/categories', categoriesRoutes);
 router.use('/offers', offersRoutes);
-router.use('/me/addresses', addressesRoutes);
+router.use('/addresses', authRequired, addressesRoutes);
 router.use('/jobs', jobsRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/users', userPhotoRoutes);

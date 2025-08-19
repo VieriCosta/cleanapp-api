@@ -1,13 +1,18 @@
 import { Router } from 'express';
-import { authRequired } from '../../middlewares/auth';
-import { createMineCtrl, listMineCtrl, setDefaultCtrl, deleteMineCtrl } from './controller';
+import { listCtrl, createCtrl, setDefaultCtrl, deleteCtrl } from './controller';
 
-const router = Router();
+const r = Router();
 
-// do próprio usuário (token obrigatório)
-router.get('/me/addresses', authRequired, listMineCtrl);
-router.post('/me/addresses', authRequired, createMineCtrl);
-router.patch('/me/addresses/:id/default', authRequired, setDefaultCtrl);
-router.delete('/me/addresses/:id', authRequired, deleteMineCtrl);
+// GET /api/addresses
+r.get('/', listCtrl);
 
-export default router;
+// POST /api/addresses
+r.post('/', createCtrl);
+
+// POST /api/addresses/:id/set-default
+r.post('/:id/set-default', setDefaultCtrl);
+
+// DELETE /api/addresses/:id
+r.delete('/:id', deleteCtrl);
+
+export default r;

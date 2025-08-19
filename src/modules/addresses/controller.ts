@@ -1,44 +1,43 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import * as Addresses from './service';
+import * as S from './service';
 
-export async function listMineCtrl(req: Request, res: Response) {
+export async function listCtrl(req: Request, res: Response) {
   const userId = (req as any).user.id as string;
-  const items = await Addresses.listMine(userId);
-  res.status(200).json({ items });
+  const items = await S.listMine(userId);
+  res.status(200).json({ total: items.length, items });
 }
 
 const createSchema = z.object({
-  label: z.string().max(60).optional(),
-  street: z.string().min(2),
-  number: z.string().max(20).optional(),
-  district: z.string().max(60).optional(),
-  city: z.string().min(2),
-  state: z.string().min(2).max(2), // UF
-  zip: z.string().min(5).max(15),
+  label: z.string().optional().nullable(),
+  street: z.string().min(1),
+  number: z.string().optional().nullable(),
+  district: z.string().optional().nullable(),
+  city: z.string().min(1),
+  state: z.string().min(1),
+  zip: z.string().min(1),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
   isDefault: z.boolean().optional(),
 });
 
-export async function createMineCtrl(req: Request, res: Response) {
+export async function createCtrl(req: Request, res: Response) {
   const userId = (req as any).user.id as string;
-  const body = createSchema.parse(req.body);
-
-  const created = await Addresses.createMine(userId, body);
-  res.status(201).json({ address: created });
+  const payload = createSchema.parse(req.body);
+  const address = await S.create(userId, payload);
+  res.status(201).json(address);
 }
 
 export async function setDefaultCtrl(req: Request, res: Response) {
   const userId = (req as any).user.id as string;
   const id = req.params.id;
-  const updated = await Addresses.setDefaultMine(userId, id);
-  res.status(200).json({ address: updated });
+  const result = await S.setDefault(userId, id);
+  res.status(200).json(result);
 }
 
-export async function deleteMineCtrl(req: Request, res: Response) {
+export async function deleteCtrl(req: Request, res: Response) {
   const userId = (req as any).user.id as string;
   const id = req.params.id;
-  await Addresses.deleteMine(userId, id);
-  res.status(204).send();
+  const result = await S.remove(userId, id);
+  res.status(200).json(result);
 }
