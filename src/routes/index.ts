@@ -1,23 +1,33 @@
-import { Router } from 'express';
-import authRoutes from '../modules/auth/routes';
-import usersRoutes from '../modules/users/routes';
-import categoriesRoutes from '../modules/categories/routes';
-import offersRoutes from '../modules/offers/routes';
-import addressesRoutes from '../modules/addresses/routes';
-import jobsRoutes from '../modules/jobs/routes';
-import conversationsRoutes from '../modules/conversations/routes';
-import userPhotoRoutes from '../modules/users/photo.routes'; //
-import { authRequired } from '../middlewares/auth';
+import { Router } from "express";
+import authRouter from "../modules/auth/routes";
+import offersRouter from "../modules/offers/routes";
+import myOffersRouter from "../modules/offers/my.routes";
+import jobsRouter from "../modules/jobs/routes";
+import conversationsRouter from "../modules/conversations/routes";
+import addressesRouter from "../modules/addresses/routes";
+import usersRouter from "../modules/users/routes";
+import categoriesRouter from "../modules/categories/routes";
+import { authRequired } from "../middlewares/auth";
+import providersRouter from "../modules/providers/routes";
 
 const router = Router();
 
-router.use('/auth', authRoutes);
-router.use('/users', usersRoutes);
-router.use('/categories', categoriesRoutes);
-router.use('/offers', offersRoutes);
-router.use('/addresses', authRequired, addressesRoutes);
-router.use('/jobs', jobsRoutes);
-router.use('/conversations', conversationsRoutes);
-router.use('/users', userPhotoRoutes);
+router.use("/auth", authRouter);
+
+// Pública/geral (catálogo)
+router.use("/offers", offersRouter);
+router.use("/providers", providersRouter);
+
+// 🔒 Somente do prestador logado
+router.use("/my/offers", authRequired, myOffersRouter);
+
+// Demais recursos protegidos
+router.use("/jobs", authRequired, jobsRouter);
+router.use("/conversations", authRequired, conversationsRouter);
+router.use("/addresses", authRequired, addressesRouter);
+router.use("/users", authRequired, usersRouter);
+
+// Categorias (pode ser pública)
+router.use("/categories", categoriesRouter);
 
 export default router;

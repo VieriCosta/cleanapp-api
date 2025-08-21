@@ -1,19 +1,14 @@
-import { Router } from 'express';
-import { authRequired, rbac } from '../../middlewares/auth';
-import {
-  listCtrl, listAllCtrl, detailCtrl, createCtrl, updateCtrl, deleteCtrl
-} from './controller';
+import { Router } from "express";
+import { prisma } from "../../db/client";
 
-const router = Router();
+const r = Router();
 
-// público
-router.get('/', listCtrl);
-router.get('/:id', detailCtrl);
+r.get("/", async (_req, res) => {
+  const items = await prisma.serviceCategory.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, slug: true },
+  });
+  res.json({ items });
+});
 
-// admin-only
-router.get('/admin/all', authRequired, rbac('admin'), listAllCtrl);
-router.post('/',        authRequired, rbac('admin'), createCtrl);
-router.put('/:id',      authRequired, rbac('admin'), updateCtrl);
-router.delete('/:id',   authRequired, rbac('admin'), deleteCtrl);
-
-export default router;
+export default r;
